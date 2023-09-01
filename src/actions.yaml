@@ -18,3 +18,41 @@ db-load-datastore-config-params:
         The version number of the datastore version, e.g. 5.7.30. If not
         specified, datastore-version-name will be used as default value.
   required: [datastore, datastore-version-name, config-file]
+create-management-network:
+  description: |
+    Creates the Neutron management network for Trove.
+  params:
+    physical-network:
+      type: string
+      description: |
+        The physical network name for the flat Neutron network creation.
+        This network name must be configured in the `neutron-api` charm's
+        `flat-network-providers` config option.
+        Through this network, the Trove instances should be able to connect to
+        the RabbitMQ charm used by the OpenStack services.
+        The network can be retrieved by running:
+          openstack network list --tag charm-trove
+    cidr:
+      type: string
+      description: |
+        The subnet to be used by the Trove instances on the management network.
+    destination-cidr:
+      type: string
+      default: ""
+      description: |
+        The RabbitMQ charm subnet.
+        This, together with `nexthop`, are required if the Trove management
+        network subnet is different from the RabbitMQ charm subnet. These
+        arguments will be used to add a route in the Trove instances in order
+        to reach RabbitMQ.
+        The gateway must be able to route traffic between the 2 different
+        CIDRs.
+        Running the action again with different ``destination-cidr`` and
+        ``nexthop`` will result in the new route replacing the older one.
+    nexthop:
+      type: string
+      default: ""
+      description: |
+        The gateway address used to reach `destination-cidr`. Required if
+        `destination-cidr` is given.
+  required: [physical-network, cidr]

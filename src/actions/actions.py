@@ -28,6 +28,84 @@ from charms import reactive
 from charmhelpers.core import hookenv
 import requests
 
+from charm.openstack import exceptions
+from charm.openstack import utils
+
+REQUIRED_FLAGS = ['identity-service.available']
+
+
+def create_mgmt_network_action(*args):
+    """Creates Neutron Management Network for Trove instances."""
+    if not reactive.is_flag_set('leadership.is_leader'):
+        return hookenv.action_fail('action must be run on the leader unit.')
+
+    if not reactive.all_flags_set(*REQUIRED_FLAGS):
+        return hookenv.action_fail(
+            'all required relations are not available yet, rerun action when '
+            'deployment is complete.')
+
+    action_args = hookenv.action_get()
+    failure = _validate_create_mgmt_net_action_args(action_args)
+    if failure:
+        return failure
+
+    keystone = reactive.endpoint_from_flag('identity-service.available')
+    try:
+        utils.create_trove_mgmt_network(
+            keystone,
+            action_args['physical-network'],
+            action_args['cidr'],
+            action_args.get('destination-cidr'),
+            action_args.get('nexthop'),
+        )
+    except exceptions.DuplicateResource as ex:
+        msg = (
+            f"The '{ex.resource_type}' to be created by this action was "
+            "already duplicated. This will have to be cleaned up manually."
+        )
+        hookenv.log(f'{msg} Exception: {ex}')
+        return hookenv.action_fail(
+            f'{msg} Check the unit logs for more details.')
+    except exceptions.InvalidResource as ex:
+        msg = (
+            f"The '{ex.resource_type}' to be created by this action already "
+            "exists with different parameters than given to the action. This "
+            "will have to be cleaned up manually."
+        )
+        hookenv.log(f'{msg} Exception: {ex}')
+        return hookenv.action_fail(
+            f'{msg} Check the unit logs for more details.')
+    except exceptions.APIException as ex:
+        hookenv.log(
+            "Encountered exception while creating the Trove management "
+            f"network. Exception: {ex}")
+        return hookenv.action_fail(
+            'Neutron API may not be available yet, rerun action when it is. '
+            'Check the unit logs for more details.')
+
+
+def _validate_create_mgmt_net_action_args(action_args):
+    if not utils.is_cidr(action_args['cidr']):
+        return hookenv.action_fail(
+            "'cidr' argument is invalid. Must be a proper CIDR.")
+
+    dest_cidr = action_args.get('destination-cidr')
+    nexthop = action_args.get('nexthop')
+    # destination-cidr and nexthop are optional, but if they're given, both of
+    # them need to be given.
+    if any([dest_cidr, nexthop]) and not all([dest_cidr, nexthop]):
+        return hookenv.action_fail(
+            "Either both 'destination-cidr' and 'nexthop' arguments must be "
+            "given, or neither.")
+
+    if dest_cidr and not utils.is_cidr(dest_cidr):
+        return hookenv.action_fail(
+            "'destination-cidr' argument is invalid. Must be a proper CIDR.")
+
+    if nexthop and not utils.is_ip(nexthop):
+        return hookenv.action_fail(
+            "'nexthop' argument is invalid. Must be an IP.")
+
 
 def load_datastore_cfg_params_action(*args):
     """Runs trove-manage db_load_datastore_config_parameters on controller."""
@@ -65,10 +143,14 @@ def load_datastore_cfg_params_action(*args):
 # can map to a python function.
 ACTIONS = {
     "db-load-datastore-config-params": load_datastore_cfg_params_action,
+    "create-management-network": create_mgmt_network_action,
 }
 
 
 def main(args):
+    # Manually trigger any register atstart events to ensure all endpoints
+    # are correctly setup, Bug #1916008.
+    hookenv._run_atstart()
     action_name = os.path.basename(args[0])
     try:
         action = ACTIONS[action_name]
