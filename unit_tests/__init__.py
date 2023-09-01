@@ -32,4 +32,6 @@ import charms_openstack.test_mocks  # noqa
 charms_openstack.test_mocks.mock_charmhelpers()
 
 apt_pkg = mock.MagicMock()
+charms = mock.MagicMock()
 sys.modules['apt_pkg'] = apt_pkg
+sys.modules['charms.layer'] = charms.layer
