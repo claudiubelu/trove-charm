@@ -9,3 +9,5 @@ coverage>=3.6
 git+https://github.com/openstack/charms.openstack#egg=charms.openstack
 
 oslotest>=3.8.0
+keystoneauth1>=3.16.0
+python-neutronclient>=3.1.0,<4.0
