@@ -47,6 +47,9 @@ options:
     description: |
       Comma-separated list of the security group IDs that are applied on the
       management port of the database instance.
+      If not set, the charm will automatically create a Security Group containing
+      only egress rules to the related RabbitMQ units, through which the Trove
+      database instances will communicate with the Trove API.
   ip-regex:
     type: string
     default: ""
