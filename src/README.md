@@ -117,6 +117,9 @@ sudo snap install charmcraft --classic
 git clone https://github.com/cloudbase/trove-charm
 cd trove-charm
 
+# Install dependencies required to build the charm wheels.
+sudo apt install libffi-dev libssl-dev
+
 # Build the charm.
 tox -e build
 
@@ -228,7 +231,9 @@ become active. It needs to be set to the Neutron network created in the
 juju config trove management-networks=$TROVE_NET_UID
 ```
 
-A management Neutron security group can be created and assigned to the
+By default, the Trove charm will create and manage a management Neutron security
+group containing only egress rules for the related RabbitMQ units. Alternatively,
+a management Neutron security group can be created and assigned to the
 management ports of the Trove instances by setting the ``management-security-groups``
 config option:
 

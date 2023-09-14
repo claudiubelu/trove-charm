@@ -35,3 +35,4 @@ apt_pkg = mock.MagicMock()
 charms = mock.MagicMock()
 sys.modules['apt_pkg'] = apt_pkg
 sys.modules['charms.layer'] = charms.layer
+sys.modules['charms.leadership'] = charms.leadership

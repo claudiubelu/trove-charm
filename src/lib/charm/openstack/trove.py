@@ -4,6 +4,9 @@ import os
 import charmhelpers.core.hookenv as hookenv
 import charms_openstack.charm
 import charms_openstack.ip as os_ip
+import charms.reactive as reactive
+
+from charm.openstack import utils
 
 
 PACKAGES = [
@@ -26,6 +29,24 @@ TROVE_PASTE_API = os.path.join(TROVE_DIR, 'api-paste.ini')
 
 # select the default release function
 charms_openstack.charm.use_defaults('charm.default-select-release')
+
+
+@charms_openstack.adapters.config_property
+def trove_security_group(cls):
+    """Returns the Trove Management Network Security Group ID.
+
+    Config property adapter which returns the Security Group ID set in the
+    `management-security-groups` config option, or the ID of the Security
+    Group created by the Trove charm (tagged with `charm-trove`).
+    """
+    config = hookenv.config('management-security-groups')
+    if config:
+        return config
+
+    # If the config option was not set, use the Security Group created by
+    # the charm.
+    keystone = reactive.endpoint_from_flag('identity-service.available')
+    return utils.get_trove_mgmt_sec_group(keystone)
 
 
 class TroveCharm(charms_openstack.charm.HAOpenStackCharm):
