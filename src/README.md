@@ -253,5 +253,31 @@ juju config trove nova-keypair=trove-keypair
 ```
 
 
+## Troubleshooting
+
+Each database instance deployed has **2 ports** for the:
+- `tenant-net`
+- `trove-net`
+
+The **tenant-net port** has a security group (`trove_sg-uuid`) that allows all egress traffic 
+and ingress traffic specific to the database created.
+
+The **trove-net port** has a security group based on the charm `management-security-groups` config option:
+- If it is not set, the security group will be `trove-sec-group` (`openstack security group list --tag charm-trove`) that allows the RabbitMQ traffic through the `mgmt-net`.
+- If it is set, the security group will be `management-security-group` that allows the traffic through the `mgmt-net` based on the specific rules that are set.
+
+**NOTE**: A `trove_sg-uuid` security group is created for every instance.
+**NOTE**: The `trove-sec-group` security group is shared across the instances.
+
+In order to access the database instances using `ssh` through the public IP, a `security group rule` 
+that enables access must be added to the `trove_sg-uuid` to allow connection.
+
+```bash
+# An example on how to add a ssh rule to your instance
+openstack security group rule create trove_sg-uuid \
+  --protocol tcp --dst-port 22:23 --ingress --ethertype ipv4
+```
+
+
 ## Restrictions
 
