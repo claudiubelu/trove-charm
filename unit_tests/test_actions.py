@@ -28,7 +28,9 @@ class TestCreateMgmtNetworkAction(base.TestBase):
         self._reactive = self._patch(actions, 'reactive')
         self._args = {
             'physical-network': mock.sentinel.physnet,
+            'network-type': 'vlan',
             'cidr': '10.10.10.0/24',
+            'segmentation-id': 1000,
             'destination-cidr': '10.10.9.0/24',
             'nexthop': '10.10.10.1',
         }
@@ -77,7 +79,9 @@ class TestCreateMgmtNetworkAction(base.TestBase):
         mock_create_net.assert_called_once_with(
             self._reactive.endpoint_from_flag.return_value,
             mock.sentinel.physnet,
+            self._args['network-type'],
             self._args['cidr'],
+            self._args['segmentation-id'],
             None,
             None,
         )
@@ -94,7 +98,9 @@ class TestCreateMgmtNetworkAction(base.TestBase):
             mock_create_net.assert_called_with(
                 self._reactive.endpoint_from_flag.return_value,
                 mock.sentinel.physnet,
+                self._args['network-type'],
                 self._args['cidr'],
+                self._args['segmentation-id'],
                 self._args['destination-cidr'],
                 self._args['nexthop'],
             )
@@ -110,7 +116,7 @@ class TestCreateMgmtNetworkAction(base.TestBase):
             self._args[key] = value
 
     def test_validate_create_mgmt_net_action_args_invalid(self):
-        for key in ['cidr', 'destination-cidr', 'nexthop']:
+        for key in ['network-type', 'cidr', 'destination-cidr', 'nexthop']:
             value = self._args.pop(key)
             self._args[key] = 'foo'
 
@@ -119,3 +125,14 @@ class TestCreateMgmtNetworkAction(base.TestBase):
                              f"Failed for key '{key}'.")
 
             self._args[key] = value
+
+        self._args['network-type'] = 'flat'
+        result = actions._validate_create_mgmt_net_action_args(self._args)
+        self.assertEqual(self._hookenv.action_fail.return_value, result,
+                         "Failed for network-type 'flat'.")
+
+        self._args['network-type'] = 'vlan'
+        self._args['segmentation-id'] = 0
+        result = actions._validate_create_mgmt_net_action_args(self._args)
+        self.assertEqual(self._hookenv.action_fail.return_value, result,
+                         "Failed for network-type 'vlan'.")

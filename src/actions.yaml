@@ -25,13 +25,29 @@ create-management-network:
     physical-network:
       type: string
       description: |
-        The physical network name for the flat Neutron network creation.
+        The physical network name for the Neutron network creation.
         This network name must be configured in the `neutron-api` charm's
         `flat-network-providers` config option.
         Through this network, the Trove instances should be able to connect to
         the RabbitMQ charm used by the OpenStack services.
         The network can be retrieved by running:
           openstack network list --tag charm-trove
+    network-type:
+      type: string
+      default: "flat"
+      description: |
+        The network type for the Neutron network creation. Only `flat` and `vlan`
+        network types are supported.
+        If the `network-type` is `vlan`, the `segmentation-id` argument must be given.
+    segmentation-id:
+      type: integer
+      default: 0
+      description: |
+        The Segmentation ID for the Neutron network to be created, if the `network-type`
+        is `vlan`. Not required for `flat` networks.
+        The given `segmentation-id` must be a valid ID within the VLAN range defined for
+        the given `physical-network`, which is set in the `neutron-api` charm's
+        `vlan-ranges` config option.
     cidr:
       type: string
       description: |
