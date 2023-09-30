@@ -94,12 +94,14 @@ def get_neutron_client(session):
     )
 
 
-def create_trove_mgmt_network(keystone, physical_network, cidr,
-                              destination_cidr=None, nexthop=None):
+def create_trove_mgmt_network(
+        keystone, physical_network, network_type, cidr, segmentation_id,
+        destination_cidr=None, nexthop=None):
     session = get_session_from_keystone(keystone)
     client = get_neutron_client(session)
 
-    network = _get_or_create_network(client, physical_network)
+    network = _get_or_create_network(
+        client, physical_network, network_type, segmentation_id)
     _get_or_create_subnet(
         client, network['id'], cidr, destination_cidr, nexthop)
 
@@ -107,7 +109,8 @@ def create_trove_mgmt_network(keystone, physical_network, cidr,
 
 
 @api_exc_wrapper(exceptions.NEUTRON_EXCS, 'neutron', 'network')
-def _get_or_create_network(client, physical_network):
+def _get_or_create_network(
+        client, physical_network, network_type, segmentation_id):
     resp = client.list_networks(tags=TROVE_TAG)
     networks = resp.get('networks', [])
     if len(networks) > 1:
@@ -115,32 +118,46 @@ def _get_or_create_network(client, physical_network):
 
     # Create the network only if it doesn't exist.
     if not networks:
-        return _create_network(client, physical_network)
+        return _create_network(
+            client, physical_network, network_type, segmentation_id)
 
     network = networks[0]
-    set_physnet = network.get('provider:physical_network')
-    if set_physnet != physical_network:
+
+    expected_values = {
         # We can't update this field if Neutron doesn't have the
         # Multiple provider extension.
         # https://docs.openstack.org/api-ref/network/v2/index.html#multiple-provider-extension
-        details = (
-            'Network already exists with the "provider:physical_network" set '
-            f'to {set_physnet} instead of {physical_network}.'
-        )
-        raise exceptions.InvalidResource('network', network['id'], details)
+        'provider:physical_network': physical_network,
+        'provider:network_type': network_type,
+        'provider:segmentation_id': segmentation_id,
+    }
+    for prop, value in expected_values.items():
+        set_value = network.get(prop)
+        if set_value != value:
+            details = (
+                f'Network already exists with the "{prop}" set to '
+                f'"{set_value}" instead of "{value}".'
+            )
+            raise exceptions.InvalidResource('network', network['id'], details)
+
     return network
 
 
-def _create_network(client, physical_network):
+def _create_network(client, physical_network, network_type, segmentation_id):
     hookenv.log(
-        f"Creating Neutron network for '{physical_network}' physical network.")
+        f"Creating Neutron network for '{physical_network}' physical network. "
+        f"Network type: {network_type}, segmentation ID: {segmentation_id}")
     network_params = {
         'name': TROVE_MGMT_NET,
-        'provider:network_type': 'flat',
+        'provider:network_type': network_type,
         'provider:physical_network': physical_network,
         'shared': True,  # should be shared across projects / tenants.
         'description': 'Trove management network',
     }
+
+    if network_type == 'vlan':
+        network_params['provider:segmentation_id'] = segmentation_id
+
     resp = client.create_network({'network': network_params})
     network = resp['network']
 

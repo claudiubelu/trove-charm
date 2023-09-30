@@ -83,7 +83,9 @@ class TestUtils(unittest.TestCase):
         net_id = utils.create_trove_mgmt_network(
             mock.sentinel.keystone,
             mock.sentinel.physnet,
+            mock.sentinel.net_type,
             mock.sentinel.cidr,
+            mock.sentinel.segmentation_id,
             mock.sentinel.dest_cidr,
             mock.sentinel.nexthop,
         )
@@ -93,7 +95,8 @@ class TestUtils(unittest.TestCase):
         mock_client = mock_get_nc.return_value
         mock_get_nc.assert_called_once_with(mock_get_sess.return_value)
         mock_get_net.assert_called_once_with(
-            mock_client, mock.sentinel.physnet)
+            mock_client, mock.sentinel.physnet, mock.sentinel.net_type,
+            mock.sentinel.segmentation_id)
         mock_get_subnet.assert_called_once_with(
             mock_client, mock.sentinel.id, mock.sentinel.cidr,
             mock.sentinel.dest_cidr, mock.sentinel.nexthop)
@@ -107,6 +110,8 @@ class TestUtils(unittest.TestCase):
             utils._get_or_create_network,
             mock_client,
             mock.sentinel.physnet,
+            mock.sentinel.net_type,
+            mock.sentinel.segmentation_id,
         )
 
     def test_get_or_create_network_exc(self):
@@ -120,21 +125,38 @@ class TestUtils(unittest.TestCase):
             utils._get_or_create_network,
             mock_client,
             mock.sentinel.physnet,
+            mock.sentinel.net_type,
+            mock.sentinel.segmentation_id,
         )
         mock_client.list_networks.assert_called_once_with(tags=utils.TROVE_TAG)
 
         fake_net = {
             'id': mock.sentinel.id,
-            'provider:physical_network': mock.sentinel.other_physnet,
+            'provider:physical_network': mock.sentinel.physnet,
+            'provider:network_type': mock.sentinel.net_type,
+            'provider:segmentation_id': mock.sentinel.segmentation_id,
         }
         mock_client.list_networks.return_value = {'networks': [fake_net]}
 
-        self.assertRaises(
-            exceptions.InvalidResource,
-            utils._get_or_create_network,
-            mock_client,
-            mock.sentinel.physnet,
-        )
+        # Replace expected field values with a bad value and expect an
+        # InvalidResource exception to be raised.
+        for key in fake_net.keys():
+            if key == 'id':
+                continue
+
+            val = fake_net[key]
+            fake_net[key] = mock.sentinel.bad_value
+
+            self.assertRaises(
+                exceptions.InvalidResource,
+                utils._get_or_create_network,
+                mock_client,
+                mock.sentinel.physnet,
+                mock.sentinel.net_type,
+                mock.sentinel.segmentation_id,
+            )
+
+            fake_net[key] = val
 
     @mock.patch.object(utils, '_create_network')
     def test_get_or_create_network(self, mock_create_net):
@@ -142,33 +164,40 @@ class TestUtils(unittest.TestCase):
         fake_net = {
             'id': mock.sentinel.id,
             'provider:physical_network': mock.sentinel.physnet,
+            'provider:network_type': mock.sentinel.net_type,
+            'provider:segmentation_id': mock.sentinel.segmentation_id,
         }
         mock_client.list_networks.return_value = {'networks': [fake_net]}
 
         network = utils._get_or_create_network(
-            mock_client, mock.sentinel.physnet)
+            mock_client, mock.sentinel.physnet, mock.sentinel.net_type,
+            mock.sentinel.segmentation_id)
 
         self.assertEqual(fake_net, network)
 
         mock_client.list_networks.return_value = {'networks': []}
         network = utils._get_or_create_network(
-            mock_client, mock.sentinel.physnet)
+            mock_client, mock.sentinel.physnet, mock.sentinel.net_type,
+            mock.sentinel.segmentation_id)
         self.assertEqual(mock_create_net.return_value, network)
         mock_create_net.assert_called_once_with(
-            mock_client, mock.sentinel.physnet)
+            mock_client, mock.sentinel.physnet, mock.sentinel.net_type,
+            mock.sentinel.segmentation_id)
 
     def test_create_network(self):
         mock_client = mock.Mock()
         fake_network = {'id': mock.sentinel.net_id}
         mock_client.create_network.return_value = {'network': fake_network}
 
-        network = utils._create_network(mock_client, mock.sentinel.physnet)
+        network = utils._create_network(
+            mock_client, mock.sentinel.physnet, 'vlan', mock.sentinel.vlan_id)
 
         self.assertEqual(fake_network, network)
         expected_params = {
             'name': utils.TROVE_MGMT_NET,
-            'provider:network_type': 'flat',
+            'provider:network_type': 'vlan',
             'provider:physical_network': mock.sentinel.physnet,
+            'provider:segmentation_id': mock.sentinel.vlan_id,
             'shared': True,
             'description': 'Trove management network',
         }

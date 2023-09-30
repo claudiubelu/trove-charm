@@ -54,7 +54,9 @@ def create_mgmt_network_action(*args):
         utils.create_trove_mgmt_network(
             keystone,
             action_args['physical-network'],
+            action_args['network-type'].lower(),
             action_args['cidr'],
+            action_args.get('segmentation-id'),
             action_args.get('destination-cidr'),
             action_args.get('nexthop'),
         )
@@ -85,6 +87,20 @@ def create_mgmt_network_action(*args):
 
 
 def _validate_create_mgmt_net_action_args(action_args):
+    net_type = action_args['network-type'].lower()
+    if net_type not in ['flat', 'vlan']:
+        return hookenv.action_fail(
+            "Only flat or vlan network types are supported.")
+
+    segmentation_id = action_args['segmentation-id']
+    if net_type == 'flat' and segmentation_id != 0:
+        return hookenv.action_fail(
+            "Segmentation ID given for flat network.")
+
+    if net_type == 'vlan' and (segmentation_id < 1 or segmentation_id >= 4095):
+        return hookenv.action_fail(
+            f"Invalid segmentation ID given: {segmentation_id}")
+
     if not utils.is_cidr(action_args['cidr']):
         return hookenv.action_fail(
             "'cidr' argument is invalid. Must be a proper CIDR.")
