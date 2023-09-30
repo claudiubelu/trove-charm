@@ -78,6 +78,10 @@ juju config neutron-openvswitch bridge-mappings="physnet2:br-trove" data-port="b
 juju run-action trove/leader create-management-network physical-network=physnet2 \
   cidr=10.8.102.0/24 destination-cidr=10.8.11.0/24 nexthop=10.8.102.1
 
+# The action above can be used to create VLAN networks as well. For more information
+# about the action and its parameters, run:
+juju show-action trove create-management-network
+
 # The created resources can be retrieved by running:
 openstack network list --tag charm-trove
 
