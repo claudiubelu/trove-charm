@@ -22,6 +22,10 @@ options:
     type: string
     default: trove
     description: Username used to access rabbitmq queue.
+  rabbit-vhost:
+    type: string
+    default: openstack
+    description: RabbitMQ virtual host to request access on rabbitmq-server.
   database-user:
     type: string
     default: trove
