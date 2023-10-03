@@ -122,6 +122,9 @@ sudo snap install --classic charm
 git clone https://github.com/cloudbase/trove-charm
 cd trove-charm
 
+# Install dependencies required to build the charm wheels.
+sudo apt install libffi-dev libssl-dev
+
 # Build the charm.
 charm build src
 ```

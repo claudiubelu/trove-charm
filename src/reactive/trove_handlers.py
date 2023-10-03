@@ -14,6 +14,7 @@
 
 from charmhelpers.core import hookenv
 import charms_openstack.charm as charm
+import charms.leadership as leadership
 import charms.reactive as reactive
 
 # This charm's library contains all of the handler code associated with
@@ -43,6 +44,7 @@ charm.use_defaults(
 @reactive.when('identity-service.available')
 @reactive.when('amqp.available')
 @reactive.when_not('is-update-status-hook')
+@reactive.when_not('unit.is-departing')
 def update_security_group(*args):
     """Optionally creates and updates the Trove Management Security Group.
 
@@ -53,8 +55,16 @@ def update_security_group(*args):
     config = hookenv.config('management-security-groups')
     if config:
         # Skip creating a new security group, we already have one configured.
-        reactive.set_state('security-group.updated')
+        leadership.leader_set({'security-group-updated': True})
         return
+
+    departing_unit = hookenv.departing_unit()
+    if departing_unit:
+        name = charm.get_charm_instance().configuration_class().local_unit_name
+        departing_unit = departing_unit.replace('/', '-')
+        if departing_unit == name:
+            reactive.set_flag('unit.is-departing')
+            return
 
     amqp = reactive.endpoint_from_flag('amqp.available')
     rabbitmq_ips = [f'{ip}/32' for ip in amqp.rabbitmq_hosts()]
@@ -78,13 +88,13 @@ def update_security_group(*args):
         )
         return
 
-    reactive.set_state('security-group.updated')
+    leadership.leader_set({'security-group-updated': True})
 
 
 @reactive.when('shared-db.available')
 @reactive.when('identity-service.available')
 @reactive.when('amqp.available')
-@reactive.when('security-group.updated')
+@reactive.when('leadership.set.security-group-updated')
 @reactive.when_not('is-update-status-hook')
 def render_config(*args):
     """Render the configuration for charm when all the interfaces are
