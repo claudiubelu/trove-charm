@@ -1,8 +1,19 @@
-python-keystoneclient
-python-neutronclient
-dnspython<2.3.0
-hatchling<2,>=1.6.0
-hatch-vcs
+#Cython<3.0.0
+#Cython~=3.0
+
+#msgpack<1.0.4
+#hatchling<2
+#hatch-vcs
+#hatch-fancy-pypi-readme
+#cryptography<39.0.0
+#cffi==1.15.0
+#setuptools<68.3.0
+#setuptools-rust<1.4.0
+#calver
+
+#python-keystoneclient
+#python-neutronclient
+#dnspython<2.3.0
 
 git+https://github.com/openstack/charms.openstack.git#egg=charms.openstack
 git+https://github.com/juju/charm-helpers.git#egg=charmhelpers
