@@ -110,13 +110,8 @@ section).
 In order to build the Trove charm, execute the following commands:
 
 ```bash
-export CHARM_BASE="$HOME/work/charms"
-export JUJU_REPOSITORY="$CHARM_BASE/builds"
-
-mkdir -p $JUJU_REPOSITORY
-
 # Install requirement for charm building.
-sudo snap install --classic charm
+sudo snap install charmcraft --classic
 
 # Clone the repository.
 git clone https://github.com/cloudbase/trove-charm
@@ -126,10 +121,17 @@ cd trove-charm
 sudo apt install libffi-dev libssl-dev
 
 # Build the charm.
-charm build src
+tox -e build
+
+# Alternatively, you can install the charm snap and build the charm:
+sudo snap install charm --classic
+tox -e build-reactive
 ```
 
-The charm should have been built in ``$JUJU_REPOSITORY/builds/trove``.
+The charm should have been built in ``./trove_ubuntu-22.04-amd64.charm``, or in
+``./build/trove`` if the charm was built with the ``charm`` building tools
+instead of ``charmcraft``. This charm path will be used to deploy or refresh
+the Trove charm.
 
 
 ## Deploy the charm
@@ -137,7 +139,7 @@ The charm should have been built in ``$JUJU_REPOSITORY/builds/trove``.
 ```bash
 # The charm can be deployed on a specific node, or an LXD container on a node
 # by specifying the --to argument.
-juju deploy $JUJU_REPOSITORY/builds/trove trove
+juju deploy ./trove_ubuntu-22.04-amd64.charm trove
 
 # Add MySQL Router.
 juju deploy mysql-router trove-mysql-router --channel 8.0/stable
@@ -157,7 +159,7 @@ To replace the current Trove charm with a newer revision and keeping the
 existing relations and configuration, run the following command:
 
 ```bash
-juju refresh --path $JUJU_REPOSITORY/builds/trove-charm trove
+juju refresh --path ./trove_ubuntu-22.04-amd64.charm trove
 ```
 
 In order for the Trove charm to become Active, the ``management-network``
