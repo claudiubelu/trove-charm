@@ -92,10 +92,62 @@ def update_security_group(*args):
     leadership.leader_set({'security-group-updated': True})
 
 
+@reactive.when('leadership.is_leader')
+@reactive.when('identity-service.available')
+@reactive.when('config.set.nexthop')
+@reactive.when('config.set.management-networks')
+@reactive.when('amqp.available')
+@reactive.when_not('is-update-status-hook')
+@reactive.when_not('unit.is-departing')
+def update_RabbitMQ_subnet(*args):
+    """Updates the RabbitMQ routes
+
+    """
+
+    departing_unit = hookenv.departing_unit()
+    if departing_unit:
+        name = charm.get_charm_instance().configuration_class().local_unit_name
+        departing_unit = departing_unit.replace('/', '-')
+        if departing_unit == name:
+            reactive.set_flag('unit.is-departing')
+            return
+
+    nexthop = hookenv.config('nexthop')
+    if not nexthop:
+        details = (
+            'Nexthop config option not set.'
+        )
+        raise exceptions.TroveCharmException(details)
+
+    network_id = hookenv.config('management-networks')
+    if not network_id:
+        details = (
+            'Management-networks config option not set.'
+        )
+        raise exceptions.TroveCharmException(details)
+
+    amqp = reactive.endpoint_from_flag('amqp.available')
+    rabbitmq_ips = [f'{ip}/32' for ip in amqp.rabbitmq_hosts()]
+
+    keystone = reactive.endpoint_from_flag('identity-service.available')
+    try:
+        utils.update_RabbitMQ_subnet_routes(
+            keystone, rabbitmq_ips, nexthop, network_id)
+    except exceptions.APIException as ex:
+        hookenv.log(
+            "Encountered exception while updating the RabbitMQ "
+            f"subnet with new routes. Deferring. Exception: {ex}"
+        )
+        return
+
+    leadership.leader_set({'RabbitMQ-routes-set': True})
+
+
 @reactive.when('shared-db.available')
 @reactive.when('identity-service.available')
 @reactive.when('amqp.available')
 @reactive.when('leadership.set.security-group-updated')
+@reactive.when('leadership.set.RabbitMQ-routes-set')
 @reactive.when_not('is-update-status-hook')
 def render_config(*args):
     """Render the configuration for charm when all the interfaces are
@@ -121,7 +173,6 @@ def render_config(*args):
             )
             return
 
->>>>>>> Create and manage a Security Group for Trove instances by default
     reactive.set_state('config.rendered')
 
 

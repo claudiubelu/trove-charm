@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import ipaddress
 import os
 import subprocess
 import sys
@@ -102,7 +101,7 @@ def _validate_create_mgmt_net_action_args(action_args):
         return hookenv.action_fail(
             f"Invalid segmentation ID given: {segmentation_id}")
 
-    if not _is_cidr(action_args['cidr']):
+    if not utils.is_cidr(action_args['cidr']):
         return hookenv.action_fail(
             "'cidr' argument is invalid. Must be a proper CIDR.")
 
@@ -115,36 +114,13 @@ def _validate_create_mgmt_net_action_args(action_args):
             "Either both 'destination-cidr' and 'nexthop' arguments must be "
             "given, or neither.")
 
-    if dest_cidr and not _is_cidr(dest_cidr):
+    if dest_cidr and not utils.is_cidr(dest_cidr):
         return hookenv.action_fail(
             "'destination-cidr' argument is invalid. Must be a proper CIDR.")
 
-    if nexthop and not _is_ip(nexthop):
+    if nexthop and not utils.is_ip(nexthop):
         return hookenv.action_fail(
             "'nexthop' argument is invalid. Must be an IP.")
-
-
-def _is_cidr(cidr):
-    if '/' not in cidr:
-        return False
-
-    try:
-        # This raises a ValueError if it's not an IP / proper length.
-        ipaddress.ip_network(cidr, False)
-    except ValueError:
-        return False
-
-    return True
-
-
-def _is_ip(ip):
-    try:
-        # This raises a ValueError if it's not an IP.
-        ipaddress.ip_address(ip)
-    except ValueError:
-        return False
-
-    return True
 
 
 def load_datastore_cfg_params_action(*args):

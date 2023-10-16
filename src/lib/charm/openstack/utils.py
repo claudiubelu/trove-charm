@@ -43,6 +43,29 @@ def api_exc_wrapper(exc_list, service, resource_type):
     return decorator
 
 
+def is_ip(ip):
+    try:
+        # This raises a ValueError if it's not an IP.
+        ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+
+    return True
+
+
+def is_cidr(cidr):
+    if '/' not in cidr:
+        return False
+
+    try:
+        # This raises a ValueError if it's not an IP / proper length.
+        ipaddress.ip_network(cidr, False)
+    except ValueError:
+        return False
+
+    return True
+
+
 def endpoint_type():
     if hookenv.config('use-internal-endpoints'):
         return 'internalURL'
@@ -171,12 +194,17 @@ def _create_subnet(client, network_id, cidr, dest_cidr, nexthop):
     # We're adding a subnet for the Trove management network. The Trove
     # instance are meant to connect to RabbitMQ, they shouldn't need a gateway
     # on this  network.
+    # The subnet should also start from *.*.*.2 not to overlap with
+    # the gateway IP address.
     hookenv.log(f"Creating '{cidr}' subnet for '{network_id}' network.")
+    start = ipaddress.ip_network(cidr)[2]
+    end = ipaddress.ip_network(cidr)[-2]
     subnet_params = {
         'name': f"{TROVE_MGMT_SUBNET}-v4",
         'network_id': network_id,
         'ip_version': 4,
         'cidr': cidr,
+        'allocation_pools': [{'start': str(start), 'end': str(end)}],
         'gateway_ip': None,
         'description': 'Trove management subnet',
     }
@@ -189,6 +217,7 @@ def _create_subnet(client, network_id, cidr, dest_cidr, nexthop):
         ]
 
     resp = client.create_subnet({'subnets': [subnet_params]})
+    client.add_tag('subnets', resp['subnets'][0]['id'], TROVE_TAG)
     return resp['subnets'][0]
 
 
@@ -206,11 +235,42 @@ def _update_route(client, subnet, destination, nexthop):
     hookenv.log(
         f"Adding route to subnet '{subnet['id']}': {destination} via "
         f"{nexthop}.")
-    params = {
-        'host_routes': [{'destination': destination, 'nexthop': nexthop}],
-    }
+    params = _get_params([destination], nexthop)
     # This will also override existing routes.
     client.update_subnet(subnet['id'], {'subnet': params})
+
+
+def _get_params(destination, nexthop):
+    host_routes = []
+    is_ip(nexthop)
+
+    if type(destination[0]) is type([]):
+        destination = destination[0]
+
+    for dest in destination:
+        is_cidr(dest)
+        host_routes.append({'destination': dest, 'nexthop': nexthop})
+    params = {
+        'host_routes': host_routes,
+    }
+
+    return params
+
+
+@api_exc_wrapper(exceptions.NEUTRON_EXCS, 'neutron', 'subnet')
+def update_RabbitMQ_subnet_routes(keystone, rabbitmq_ips, nexthop, network_id):
+    """Updates RabbitMQ subnet to have the routes
+    """
+
+    session = get_session_from_keystone(keystone)
+    client = get_neutron_client(session)
+
+    resp = client.list_subnets(network_id=network_id, tags=TROVE_TAG)
+    subnets = resp.get('subnets', [])
+    if not subnets:
+        raise exceptions.NotFoundException('subnet')
+
+    _update_route(client, subnets[0], rabbitmq_ips, nexthop)
 
 
 def get_trove_mgmt_sec_group(keystone):

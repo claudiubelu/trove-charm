@@ -40,6 +40,10 @@ class TestRegisteredHooks(test_utils.TestRegisteredHooks):
                     'leadership.is_leader',
                     'identity-service.available',
                     'amqp.available'),
+                'update_RabbitMQ_subnet_routes': (
+                    'leadership.is_leader',
+                    'identity-service.available',
+                    'amqp.available'),
                 'render_config': (
                     'shared-db.available',
                     'identity-service.available',
@@ -50,6 +54,7 @@ class TestRegisteredHooks(test_utils.TestRegisteredHooks):
             },
             'when_not': {
                 'update_security_group': ('is-update-status-hook',),
+                'update_RabbitMQ_subnet_routes': ('is-update-status-hook',),
                 'render_config': ('is-update-status-hook',),
                 'init_db': ('db.synced',),
                 'cluster_connected': ('ha.available', 'is-update-status-hook'),
@@ -97,6 +102,20 @@ class TestTroveHandlers(base.TestBase):
         self._test_update_security_group(
             side_effect=exceptions.APIException)
 
+    def test_update_RabbitMQ_subnet_skip(self):
+        handlers.update_RabbitMQ_subnet()
+
+        self._hookenv.config.assert_called_once_with(
+            'nexthop')
+        self._hookenv.config.assert_called_once_with(
+            'management-networks')
+        self._reactive.set_state.assert_called_once_with(
+            'RabbitMQ-routes.set')
+        self._reactive.endpoint_from_flag.assert_not_called()
+
+    def test_update_RabbitMQ_subnet(self):
+        self._test_update_RabbitMQ_subnet()
+
     @mock.patch.object(handlers.utils, 'update_trove_mgmt_sec_group')
     def _test_update_security_group(self, mock_update_trove_sg,
                                     side_effect=None):
@@ -121,6 +140,31 @@ class TestTroveHandlers(base.TestBase):
         else:
             self._reactive.set_state.assert_called_once_with(
                 'security-group.updated')
+
+    @mock.patch.object(handlers.utils, 'update_RabbitMQ_subnet_routes')
+    def _test_update_RabbitMQ_subnet(self, mock_update_RabbitMQ_subnet_routes,
+                                     side_effect=None):
+        self._hookenv.config.return_value = 9999
+        self._hookenv.config.return_value = ""
+        mock_amqp = mock.Mock()
+        mock_keystone = mock.Mock()
+        self._reactive.endpoint_from_flag.side_effect = [
+            mock_amqp, mock_keystone]
+        mock_amqp.rabbitmq_hosts.return_value = ['10.10.10.10']
+        mock_update_RabbitMQ_subnet_routes.side_effect = side_effect
+
+        handlers.update_RabbitMQ_subnet()
+
+        self._reactive.endpoint_from_flag.assert_has_calls([
+            mock.call('amqp.available'),
+            mock.call('identity-service.available')])
+        mock_update_RabbitMQ_subnet_routes.assert_called_once_with(
+            mock_keystone, ['10.10.10.10/32'], 9999, "")
+        if side_effect:
+            self._hookenv.log.assert_called_once()
+        else:
+            self._reactive.set_state.assert_called_once_with(
+                'RabbitMQ-routes.set')
 
     def test_render_config(self):
         handlers.render_config(mock.sentinel.arg)

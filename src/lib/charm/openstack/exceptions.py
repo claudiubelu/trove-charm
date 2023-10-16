@@ -69,3 +69,12 @@ class APIException(TroveCharmException):
     def __init__(self, msg=None, service=None, resource_type=None, exc=None):
         super().__init__(msg, service=service, resource_type=resource_type,
                          exc=exc)
+
+
+class NotFoundException(TroveCharmException):
+    msg_fmt = ("Could not find the %(resource_type)s"
+               "Details: %(details)s")
+
+    def __init__(self, msg=None, resource_type=None, details=None):
+        super().__init__(msg, resource_type=resource_type,
+                         details=details)

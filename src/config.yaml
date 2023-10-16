@@ -34,6 +34,10 @@ options:
     type: string
     default: trove
     description: Database name for Trove.
+  nexthop:
+    type: string
+    default: ""
+    description: Nexthop IP
 
   # Trove control plane config options.
   enable-secure-rpc-messaging:

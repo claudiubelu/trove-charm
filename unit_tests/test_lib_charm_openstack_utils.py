@@ -319,6 +319,33 @@ class TestUtils(unittest.TestCase):
         mock_client.update_subnet.assert_called_once_with(
             mock.sentinel.id, {'subnet': expected_routes})
 
+    @mock.patch.object(utils, 'update_RabbitMQ_subnet_routes')
+    @mock.patch.object(utils, '_update_route')
+    @mock.patch.object(utils, 'get_neutron_client')
+    @mock.patch.object(utils, 'get_session_from_keystone')
+    def test_update_RabbitMQ_subnet_routes(
+            self, mock_get_sess, mock_get_nc,
+            mock_update_route, mock_update_subnet):
+        mock_client = mock_get_nc.return_value
+        fake_subnet = {
+            'id': mock.sentinel.id,
+            'tags': mock.sentinel.tag,
+            'cidr': '192.168.1.0/24',
+        }
+        mock_client.list_subnets.return_value = {'subnets': [fake_subnet]}
+        rabbitmq_ips = [mock.sentinel.ip2, mock.sentinel.ip3,
+                        mock.sentinel.ipnew]
+
+        mock_update_route.assert_called_once_with(
+            mock_client, fake_subnet, rabbitmq_ips,
+            mock.sentinel.nexthop)
+
+        mock_get_sess.assert_called_once_with(mock.sentinel.keystone)
+        mock_get_nc.assert_called_once_with(mock_get_sess.return_value)
+        mock_update_subnet.assert_called_once_with(
+            mock.sentinel.keystone, rabbitmq_ips, mock.sentinel.nexthop,
+            mock.sentinel.id)
+
     @mock.patch.object(utils, '_get_or_create_sec_group')
     @mock.patch.object(utils, 'get_neutron_client')
     @mock.patch.object(utils, 'get_session_from_keystone')
