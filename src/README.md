@@ -204,7 +204,7 @@ openstack datastore version create 5.7.29 mysql mysql "" \
 
 # Load the validation rules for the datastore.
 CONF_FILE_URL="https://github.com/openstack/trove/blob/stable/zed/trove/templates/mysql/validation-rules.json"
-juju run --wait trove/leader db-load-datastore-config-params \
+juju run-action --wait trove/leader db-load-datastore-config-params \
   datastore=mysql datastore-version-name=5.7.29 config-file=$CONF_FILE_URL
 ```
 
