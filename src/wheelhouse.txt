@@ -1,7 +1,3 @@
-flit_scm
-anyio<3.7.0
-Cython<3.0
-
 dnspython<2.3.0
 
 git+https://github.com/openstack/charms.openstack.git#egg=charms.openstack
