@@ -253,30 +253,38 @@ class TestUtils(unittest.TestCase):
 
     def test_create_subnet(self):
         mock_client = mock.Mock()
+        mock_subnet = {'id': mock.sentinel.id}
         mock_client.create_subnet.return_value = {
-            'subnets': [mock.sentinel.subnet],
+            'subnets': [mock_subnet],
         }
 
         subnet = utils._create_subnet(
-            mock_client, mock.sentinel.net_id, mock.sentinel.cidr,
+            mock_client, mock.sentinel.net_id, '10.0.0.0/24',
             mock.sentinel.dest_cidr, mock.sentinel.nexthop)
 
-        self.assertEqual(mock.sentinel.subnet, subnet)
+        self.assertEqual(mock_subnet, subnet)
         expected_route = {
             'destination': mock.sentinel.dest_cidr,
             'nexthop': mock.sentinel.nexthop,
+        }
+        expected_allocation_pool = {
+            'start': '10.0.0.2',
+            'end': '10.0.0.254',
         }
         expected_params = {
             'name': f"{utils.TROVE_MGMT_SUBNET}-v4",
             'network_id': mock.sentinel.net_id,
             'ip_version': 4,
-            'cidr': mock.sentinel.cidr,
+            'cidr': '10.0.0.0/24',
             'gateway_ip': None,
+            'allocation_pools': [expected_allocation_pool],
             'description': 'Trove management subnet',
             'host_routes': [expected_route],
         }
         mock_client.create_subnet.assert_called_once_with(
             {'subnets': [expected_params]})
+        mock_client.add_tag.assert_called_once_with(
+            'subnets', mock.sentinel.id, utils.TROVE_TAG)
 
     def test_routes_exist_different_len(self):
         result = utils._routes_exist(
@@ -355,6 +363,40 @@ class TestUtils(unittest.TestCase):
         }
         mock_client.update_subnet.assert_called_once_with(
             mock.sentinel.id, {'subnet': expected_routes})
+
+    @mock.patch.object(utils, 'get_neutron_client')
+    @mock.patch.object(utils, 'get_session_from_keystone')
+    def test_update_subnet_rabbitmq_routes_not_found(
+            self, mock_get_sess, mock_get_nc):
+        mock_client = mock_get_nc.return_value
+        mock_client.list_subnets.return_value = {'subnets': []}
+
+        self.assertRaises(
+            exceptions.NotFoundException,
+            utils.update_subnet_rabbitmq_routes,
+            mock.sentinel.keystone, mock.sentinel.rabbitmq_ips,
+            mock.sentinel.nexthop, mock.sentinel.network_id)
+
+    @mock.patch.object(utils, '_update_routes')
+    @mock.patch.object(utils, 'get_neutron_client')
+    @mock.patch.object(utils, 'get_session_from_keystone')
+    def test_update_subnet_rabbitmq_routes(
+            self, mock_get_sess, mock_get_nc, mock_update_routes):
+        mock_client = mock_get_nc.return_value
+        mock_client.list_subnets.return_value = {
+            'subnets': [mock.sentinel.subnet]}
+
+        utils.update_subnet_rabbitmq_routes(
+            mock.sentinel.keystone, mock.sentinel.rabbitmq_ips,
+            mock.sentinel.nexthop, mock.sentinel.network_id)
+
+        mock_get_sess.assert_called_once_with(mock.sentinel.keystone)
+        mock_get_nc.assert_called_once_with(mock_get_sess.return_value)
+        mock_client.list_subnets.assert_called_once_with(
+            network_id=mock.sentinel.network_id, tags=utils.TROVE_TAG)
+        mock_update_routes.assert_called_once_with(
+            mock_client, mock.sentinel.subnet, mock.sentinel.rabbitmq_ips,
+            mock.sentinel.nexthop)
 
     @mock.patch.object(utils, '_get_or_create_sec_group')
     @mock.patch.object(utils, 'get_neutron_client')

@@ -15,7 +15,6 @@
 from unittest import mock
 
 from charmhelpers.core import hookenv
-import charms_openstack.charm as charm
 import charms_openstack.test_utils as test_utils
 
 from charm.openstack import exceptions
@@ -43,6 +42,13 @@ class TestRegisteredHooks(test_utils.TestRegisteredHooks):
                     'identity-service.available',
                     'amqp.available',
                 ),
+                'update_rabbitmq_routes': (
+                    'leadership.is_leader',
+                    'identity-service.available',
+                    'amqp.available',
+                    'config.set.nexthop',
+                    'config.set.management-networks',
+                ),
                 'render_config': (
                     'shared-db.available',
                     'identity-service.available',
@@ -54,6 +60,10 @@ class TestRegisteredHooks(test_utils.TestRegisteredHooks):
             },
             'when_not': {
                 'update_security_group': (
+                    'is-update-status-hook',
+                    'unit.is-departing',
+                ),
+                'update_rabbitmq_routes': (
                     'is-update-status-hook',
                     'unit.is-departing',
                 ),
@@ -139,6 +149,64 @@ class TestTroveHandlers(base.TestBase):
         else:
             self._leadership.leader_set.assert_called_once_with(
                 {'security-group-updated': True})
+
+    def test_is_departing(self):
+        self._hookenv.departing_unit.return_value = None
+        self.assertFalse(handlers._is_departing())
+
+        hookenv.local_unit.return_value = 'foo/0'
+        self._hookenv.departing_unit.return_value = 'foo/0'
+        self.assertTrue(handlers._is_departing())
+
+    @mock.patch.object(handlers, '_is_departing')
+    def test_update_rabbitmq_routes_skip(self, mock_is_departing):
+        mock_is_departing.return_value = True
+
+        handlers.update_rabbitmq_routes()
+
+        self._reactive.set_flag.assert_called_once_with(
+            'unit.is-departing')
+
+        mock_is_departing.return_value = False
+        self._hookenv.config.return_value = ''
+
+        handlers.update_rabbitmq_routes()
+
+        self._hookenv.config.assert_called_once_with(
+            'nexthop')
+        self._reactive.endpoint_from_flag.assert_not_called()
+
+    def test_update_rabbitmq_routes(self):
+        self._test_update_rabbitmq_routes()
+
+    def test_update_rabbitmq_routes_api_exc(self):
+        self._test_update_rabbitmq_routes(
+            side_effect=exceptions.APIException)
+
+    @mock.patch.object(handlers.utils, 'update_subnet_rabbitmq_routes')
+    def _test_update_rabbitmq_routes(self, mock_update_subnet,
+                                     side_effect=None):
+        self._hookenv.config.side_effect = [
+            mock.sentinel.nexthop, mock.sentinel.network_id,
+            mock.sentinel.nexthop, mock.sentinel.network_id,
+        ]
+        mock_amqp = mock.Mock()
+        mock_keystone = mock.Mock()
+        self._reactive.endpoint_from_flag.side_effect = [
+            mock_amqp, mock_keystone]
+        mock_amqp.rabbitmq_hosts.return_value = ['10.10.10.10']
+        mock_update_subnet.side_effect = side_effect
+
+        handlers.update_rabbitmq_routes()
+
+        self._reactive.endpoint_from_flag.assert_has_calls([
+            mock.call('amqp.available'),
+            mock.call('identity-service.available')])
+        mock_update_subnet.assert_called_once_with(
+            mock_keystone, ['10.10.10.10/32'], mock.sentinel.nexthop,
+            mock.sentinel.network_id)
+        if side_effect:
+            self._hookenv.log.assert_called_once()
 
     def test_render_config(self):
         handlers.render_config(mock.sentinel.arg)

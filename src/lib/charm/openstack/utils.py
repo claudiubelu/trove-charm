@@ -194,12 +194,18 @@ def _create_subnet(client, network_id, cidr, dest_cidr, nexthop):
     # We're adding a subnet for the Trove management network. The Trove
     # instance are meant to connect to RabbitMQ, they shouldn't need a gateway
     # on this  network.
+    # Neutron allocates the first allocatable address for DHCP, which can
+    # conflict with the gateway IP. We're omitting the first address in order
+    # to avoid this problem.
     hookenv.log(f"Creating '{cidr}' subnet for '{network_id}' network.")
+    start = ipaddress.ip_network(cidr)[2]
+    end = ipaddress.ip_network(cidr)[-2]
     subnet_params = {
         'name': f"{TROVE_MGMT_SUBNET}-v4",
         'network_id': network_id,
         'ip_version': 4,
         'cidr': cidr,
+        'allocation_pools': [{'start': str(start), 'end': str(end)}],
         'gateway_ip': None,
         'description': 'Trove management subnet',
     }
@@ -212,6 +218,7 @@ def _create_subnet(client, network_id, cidr, dest_cidr, nexthop):
         ]
 
     resp = client.create_subnet({'subnets': [subnet_params]})
+    client.add_tag('subnets', resp['subnets'][0]['id'], TROVE_TAG)
     return resp['subnets'][0]
 
 
@@ -250,6 +257,25 @@ def _update_routes(client, subnet, destinations, nexthop):
 
     # This will also override existing routes.
     client.update_subnet(subnet['id'], {'subnet': params})
+
+
+@api_exc_wrapper(exceptions.NEUTRON_EXCS, 'neutron', 'subnet')
+def update_subnet_rabbitmq_routes(keystone, rabbitmq_ips, nexthop, network_id):
+    """Updates The Trove Management Network subnet with routes to RabbitMQ.
+
+    The subnet's host_routes field will be updated with the given rabbitmq_ips
+    and nexthop.
+    """
+    session = get_session_from_keystone(keystone)
+    client = get_neutron_client(session)
+
+    resp = client.list_subnets(network_id=network_id, tags=TROVE_TAG)
+    subnets = resp.get('subnets')
+    if not subnets:
+        raise exceptions.NotFoundException('subnet')
+
+    _update_routes(client, subnets[0], rabbitmq_ips, nexthop)
+
 
 def get_trove_mgmt_sec_group(keystone):
     """Returns the ID of the Trove Management Network Security Group.

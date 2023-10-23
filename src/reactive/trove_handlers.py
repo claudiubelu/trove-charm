@@ -92,6 +92,57 @@ def update_security_group(*args):
     leadership.leader_set({'security-group-updated': True})
 
 
+def _is_departing():
+    departing_unit = hookenv.departing_unit()
+    if not departing_unit:
+        return False
+
+    name = charm.get_charm_instance().configuration_class().local_unit_name
+    departing_unit = departing_unit.replace('/', '-')
+    return departing_unit == name
+
+
+@reactive.when('leadership.is_leader')
+@reactive.when('identity-service.available')
+@reactive.when('config.set.nexthop')
+@reactive.when('config.set.management-networks')
+@reactive.when('amqp.available')
+@reactive.when_not('is-update-status-hook')
+@reactive.when_not('unit.is-departing')
+def update_rabbitmq_routes(*args):
+    """Updates the Trove Management Network RabbitMQ routes.
+
+    For each RabbitMQ related unit, we create a host route in Trove Management
+    Network's subnet via the configured nexthop. Note that updates to the
+    RabbitMQ IPs and routes to them will **only** apply to new Trove Database
+    instances.
+    """
+    if _is_departing():
+        reactive.set_flag('unit.is-departing')
+        return
+
+    for opt_name in ['nexthop', 'management-networks']:
+        opt_value = hookenv.config(opt_name)
+        if not opt_value:
+            hookenv.log(f'{opt_name} config option not set.')
+            return
+
+    amqp = reactive.endpoint_from_flag('amqp.available')
+    rabbitmq_ips = [f'{ip}/32' for ip in amqp.rabbitmq_hosts()]
+
+    keystone = reactive.endpoint_from_flag('identity-service.available')
+    try:
+        utils.update_subnet_rabbitmq_routes(
+            keystone, rabbitmq_ips, hookenv.config('nexthop'),
+            hookenv.config('management-networks'))
+    except exceptions.APIException as ex:
+        hookenv.log(
+            "Encountered exception while updating the RabbitMQ "
+            f"subnet with new routes. Deferring. Exception: {ex}"
+        )
+        return
+
+
 @reactive.when('shared-db.available')
 @reactive.when('identity-service.available')
 @reactive.when('amqp.available')

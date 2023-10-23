@@ -34,6 +34,15 @@ options:
     type: string
     default: trove
     description: Database name for Trove.
+  nexthop:
+    type: string
+    default: ""
+    description: |
+      Nexthop IP to be used when creating host routes on the set Trove
+      Management Network to the RabbitMQ unit IPs. The network's subnet
+      should have the `charm-trove` tag, which is automatically set by
+      the create-management-network action. The nexthop should be able
+      to route to the RabbitMQ unit IPs.
 
   # Trove control plane config options.
   enable-secure-rpc-messaging:
