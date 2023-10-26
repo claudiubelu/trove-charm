@@ -1,5 +1,7 @@
+import base64
 import collections
 import os
+import yaml
 
 import charmhelpers.core.hookenv as hookenv
 import charms_openstack.charm
@@ -27,6 +29,14 @@ TROVE_CONF = os.path.join(TROVE_DIR, 'trove.conf')
 TROVE_GUESTAGENT_CONF = os.path.join(TROVE_DIR, 'trove-guestagent.conf')
 TROVE_PASTE_API = os.path.join(TROVE_DIR, 'api-paste.ini')
 
+TROVE_DBS = ['cassandra', 'couchbase', 'couchdb', 'db2', 'mariadb', 'mongodb',
+             'mysql', 'percona', 'postgresql', 'pxc', 'redis', 'vertica']
+# TROVE_CLOUDINIT_DIR = os.path.join(TROVE_DIR, 'cloudinit')
+TROVE_CLOUDINIT_DIR = TROVE_DIR
+TROVE_CLOUDINIT_FILES = [
+    os.path.join(TROVE_CLOUDINIT_DIR, f'{db}.cloudinit') for db in TROVE_DBS
+]
+
 # select the default release function
 charms_openstack.charm.use_defaults('charm.default-select-release')
 
@@ -47,6 +57,25 @@ def trove_security_group(cls):
     # the charm.
     keystone = reactive.endpoint_from_flag('identity-service.available')
     return utils.get_trove_mgmt_sec_group(keystone)
+
+
+@charms_openstack.adapters.config_property
+def guest_ca_certs(cls):
+    """Returns the cloud-init ca-certs YAML section.
+    """
+
+    amqp = reactive.endpoint_from_flag('amqp.available')
+    ssl_ca = amqp.ssl_ca()
+    if not ssl_ca:
+        return None
+
+    decoded_cert = base64.b64decode(ssl_ca).decode('utf-8')
+    ca_certs = {
+        'ca-certs': {
+            'trusted': [decoded_cert],
+        },
+    }
+    return yaml.dump(ca_certs, default_style='|')
 
 
 class TroveCharm(charms_openstack.charm.HAOpenStackCharm):
@@ -87,6 +116,7 @@ class TroveCharm(charms_openstack.charm.HAOpenStackCharm):
         TROVE_CONF: services,
         TROVE_GUESTAGENT_CONF: services,
         TROVE_PASTE_API: [default_service],
+        **dict((f, TROVE_SERVICES) for f in TROVE_CLOUDINIT_FILES),
     }
 
     ha_resources = ['vips', 'haproxy']
